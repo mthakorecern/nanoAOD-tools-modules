@@ -7,6 +7,8 @@ from PhysicsTools.NanoAODTools.postprocessing.framework.datamodel import Collect
 import os
 import numpy as np
 import correctionlib
+import ROOT
+ROOT.PyConfig.IgnoreCommandLineOptions = True
 
 class jetVMAP(Module):
     def __init__(self, json_JVMAP, corrName=None, veto_map_name = "jetvetomap"):

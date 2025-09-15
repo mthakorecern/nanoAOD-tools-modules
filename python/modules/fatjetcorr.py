@@ -100,8 +100,10 @@ class fatJetJERC(Module):
 
         # Load correction JSONs
         self.evaluator_JERC = correctionlib.CorrectionSet.from_file(json_JERC)
-        self.evaluator_jer = correctionlib.CorrectionSet.from_file(json_JERsmear)
-
+        if json_JERsmear is not None:
+            self.evaluator_jer = correctionlib.CorrectionSet.from_file(json_JERsmear)
+        else:
+            self.evaluator_jer = None
         self.evaluator_L1 = self.evaluator_JERC[L1Key]
         self.evaluator_L2 = self.evaluator_JERC[L2Key]
         self.evaluator_L3 = self.evaluator_JERC[L3Key]
@@ -149,7 +151,7 @@ class fatJetJERC(Module):
             self.out.branch("FatJet_mass_jerDown", "F", lenVar="nFatJet", limitedPrecision=12)
 
             for src in self.jes_sources:
-                name = src.split("MC_")[1].replace("_AK8PFPuppi", "")
+                name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
                 self.out.branch(f"FatJet_pt_jes{name}Up", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_pt_jes{name}Down", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Up", "F", lenVar="nFatJet")
@@ -176,10 +178,52 @@ class fatJetJERC(Module):
             pt_raw = jet.pt * (1 - jet.rawFactor)
             mass_raw = jet.mass * (1 - jet.rawFactor)
 
-            pt_L1 = pt_raw * self.evaluator_L1.evaluate(jet.area, jet.eta, pt_raw, event.Rho_fixedGridRhoFastjetAll)
-            pt_L2 = pt_L1 * self.evaluator_L2.evaluate(jet.eta, jet.phi, pt_L1) if self.usePhiDependentJEC else self.evaluator_L2.evaluate(jet.eta, pt_L1) * pt_L1
-            pt_L3 = pt_L2 * self.evaluator_L3.evaluate(jet.eta, pt_L2)
-            pt_JEC = pt_L3 * self.evaluator_L2L3.evaluate(float(event.run), jet.eta, pt_L3) if self.useRunDependentJEC else self.evaluator_L2L3.evaluate(jet.eta, pt_L3) * pt_L3
+            # assume: pt_raw, jet.eta, jet.phi, jet.area, event.Rho_fixedGridRhoFastjetAll, event.run already exist
+
+            # L1FastJet expects: ['JetA', 'JetEta', 'JetPt', 'Rho']
+            val_L1 = self.evaluator_L1.evaluate(
+                float(jet.area),
+                float(jet.eta),
+                float(pt_raw),
+                float(event.Rho_fixedGridRhoFastjetAll)
+            )
+            pt_L1 = pt_raw * val_L1
+
+            # L2Relative expects: ['JetEta', 'JetPhi', 'JetPt']
+            val_L2 = self.evaluator_L2.evaluate(
+                float(jet.eta),
+                float(jet.phi),
+                float(pt_L1)
+            )
+            pt_L2 = pt_L1 * val_L2
+
+            # L3Absolute expects: ['JetEta', 'JetPt']
+            val_L3 = self.evaluator_L3.evaluate(
+                float(jet.eta),
+                float(pt_L2)
+            )
+            pt_L3 = pt_L2 * val_L3
+
+            # ------------------------------
+            # L2L3 evaluation (MC vs Data)
+            # ------------------------------
+            inputs_L2L3 = self.evaluator_L2L3.inputs
+
+            if "run" in [inp.name for inp in inputs_L2L3]:
+                # Data JSON expects run number
+                val_L2L3 = self.evaluator_L2L3.evaluate(
+                    float(event.run),
+                    float(jet.eta),
+                    float(pt_L3)
+                )
+            else:
+                # MC JSON does not expect run
+                val_L2L3 = self.evaluator_L2L3.evaluate(
+                    float(jet.eta),
+                    float(pt_L3)
+                )
+
+            pt_JEC = pt_L3 * val_L2L3
 
             JEC = pt_JEC / pt_raw
             mass_JEC = mass_raw * JEC
