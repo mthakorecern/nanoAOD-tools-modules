@@ -132,27 +132,24 @@ class fatJetJERC(Module):
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
         if self.overwritePt:
-            self.out.branch("FatJet_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_mass", "F", lenVar="nFatJet", limitedPrecision=12)
             self.out.branch("FatJet_uncorrected_pt", "F", lenVar="nFatJet")
             self.out.branch("FatJet_uncorrected_mass", "F", lenVar="nFatJet", limitedPrecision=12)
-        else:
-            self.out.branch("FatJet_corrected_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_corrected_mass", "F", lenVar="nFatJet", limitedPrecision=12)
+
+        self.out.branch("FatJet_pt_nom", "F", lenVar="nFatJet")
+        self.out.branch("FatJet_mass_nom", "F", lenVar="nFatJet", limitedPrecision=12)
 
         if self.is_mc:
-            self.out.branch("FatJet_scaleUp_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_scaleDn_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_scaleUp_mass", "F", lenVar="nFatJet", limitedPrecision=12)
-            self.out.branch("FatJet_scaleDn_mass", "F", lenVar="nFatJet", limitedPrecision=12)
-            self.out.branch("FatJet_smearUp_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_smearDn_pt", "F", lenVar="nFatJet")
-            self.out.branch("FatJet_smearUp_mass", "F", lenVar="nFatJet", limitedPrecision=12)
-            self.out.branch("FatJet_smearDn_mass", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_pt_jesTotalUp", "F", lenVar="nFatJet")
+            self.out.branch("FatJet_pt_jesTotalDown", "F", lenVar="nFatJet")
+            self.out.branch("FatJet_mass_jesTotalUp", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_mass_jesTotalDown", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_pt_jerUp", "F", lenVar="nFatJet")
+            self.out.branch("FatJet_pt_jerDown", "F", lenVar="nFatJet")
+            self.out.branch("FatJet_mass_jerUp", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_mass_jerDown", "F", lenVar="nFatJet", limitedPrecision=12)
 
-            # JES regrouped sources
             for src in self.jes_sources:
-                name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
+                name = src.split("MC_")[1].replace("_AK8PFPuppi", "")
                 self.out.branch(f"FatJet_pt_jes{name}Up", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_pt_jes{name}Down", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Up", "F", lenVar="nFatJet")
@@ -252,21 +249,19 @@ class fatJetJERC(Module):
         if self.overwritePt:
             self.out.fillBranch("FatJet_uncorrected_pt", pt_uncorr)
             self.out.fillBranch("FatJet_uncorrected_mass", mass_uncorr)
-            self.out.fillBranch("FatJet_pt", pt_corr)
-            self.out.fillBranch("FatJet_mass", mass_corr)
-        else:
-            self.out.fillBranch("FatJet_corrected_pt", pt_corr)
-            self.out.fillBranch("FatJet_corrected_mass", mass_corr)
+
+        self.out.fillBranch("FatJet_pt_nom", pt_corr)
+        self.out.fillBranch("FatJet_mass_nom", mass_corr)
 
         if self.is_mc:
-            self.out.fillBranch("FatJet_smearUp_pt", pt_smear_up)
-            self.out.fillBranch("FatJet_smearDn_pt", pt_smear_dn)
-            self.out.fillBranch("FatJet_smearUp_mass", mass_smear_up)
-            self.out.fillBranch("FatJet_smearDn_mass", mass_smear_dn)
-            self.out.fillBranch("FatJet_scaleUp_pt", pt_scale_up)
-            self.out.fillBranch("FatJet_scaleDn_pt", pt_scale_dn)
-            self.out.fillBranch("FatJet_scaleUp_mass", mass_scale_up)
-            self.out.fillBranch("FatJet_scaleDn_mass", mass_scale_dn)
+            self.out.fillBranch("FatJet_pt_jerUp", pt_smear_up)
+            self.out.fillBranch("FatJet_pt_jerDown", pt_smear_dn)
+            self.out.fillBranch("FatJet_mass_jerUp", mass_smear_up)
+            self.out.fillBranch("FatJet_mass_jerDown", mass_smear_dn)
+            self.out.fillBranch("FatJet_pt_jesTotalUp", pt_scale_up)
+            self.out.fillBranch("FatJet_pt_jesTotalDown", pt_scale_dn)
+            self.out.fillBranch("FatJet_mass_jesTotalUp", mass_scale_up)
+            self.out.fillBranch("FatJet_mass_jesTotalDown", mass_scale_dn)
 
             for name in pt_sources_up:
                 self.out.fillBranch(f"FatJet_pt_jes{name}Up", pt_sources_up[name])

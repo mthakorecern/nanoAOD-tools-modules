@@ -118,24 +118,25 @@ class jetJERC(Module):
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
         if self.overwritePt:
-            self.out.branch("Jet_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_mass", "F", lenVar="nJet", limitedPrecision=12)
             self.out.branch("Jet_uncorrected_pt", "F", lenVar="nJet")
             self.out.branch("Jet_uncorrected_mass", "F", lenVar="nJet", limitedPrecision=12)
-        else:
-            self.out.branch("Jet_corrected_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_corrected_mass", "F", lenVar="nJet", limitedPrecision=12)
-
+        # Always produce nominal corrected branches
+        self.out.branch("Jet_pt_nom", "F", lenVar="nJet")
+        self.out.branch("Jet_mass_nom", "F", lenVar="nJet", limitedPrecision=12)
+        
         if self.is_mc:
-            self.out.branch("Jet_scaleUp_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_scaleDn_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_scaleUp_mass", "F", lenVar="nJet", limitedPrecision=12)
-            self.out.branch("Jet_scaleDn_mass", "F", lenVar="nJet", limitedPrecision=12)
-            self.out.branch("Jet_smearUp_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_smearDn_pt", "F", lenVar="nJet")
-            self.out.branch("Jet_smearUp_mass", "F", lenVar="nJet", limitedPrecision=12)
-            self.out.branch("Jet_smearDn_mass", "F", lenVar="nJet", limitedPrecision=12)
+            # JES total uncertainties
+            self.out.branch("Jet_pt_jesTotalUp", "F", lenVar="nJet")
+            self.out.branch("Jet_pt_jesTotalDown", "F", lenVar="nJet")
+            self.out.branch("Jet_mass_jesTotalUp", "F", lenVar="nJet", limitedPrecision=12)
+            self.out.branch("Jet_mass_jesTotalDown", "F", lenVar="nJet", limitedPrecision=12)
+            # JER variations
+            self.out.branch("Jet_pt_jerUp", "F", lenVar="nJet")
+            self.out.branch("Jet_pt_jerDown", "F", lenVar="nJet")
+            self.out.branch("Jet_mass_jerUp", "F", lenVar="nJet", limitedPrecision=12)
+            self.out.branch("Jet_mass_jerDown", "F", lenVar="nJet", limitedPrecision=12)
 
+            # JES regrouped sources
             for src in self.jes_sources:
                 name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
                 self.out.branch(f"Jet_pt_jes{name}Up", "F", lenVar="nJet")
@@ -231,26 +232,27 @@ class jetJERC(Module):
             pt_uncorr.append(pt_raw)
             mass_uncorr.append(mass_raw)
 
-        # fill branches
+        # Nominal corrected
+        self.out.fillBranch("Jet_pt_nom", pt_corr)
+        self.out.fillBranch("Jet_mass_nom", mass_corr)
         if self.overwritePt:
             self.out.fillBranch("Jet_uncorrected_pt", pt_uncorr)
             self.out.fillBranch("Jet_uncorrected_mass", mass_uncorr)
-            self.out.fillBranch("Jet_pt", pt_corr)
-            self.out.fillBranch("Jet_mass", mass_corr)
-        else:
-            self.out.fillBranch("Jet_corrected_pt", pt_corr)
-            self.out.fillBranch("Jet_corrected_mass", mass_corr)
 
         if self.is_mc:
-            self.out.fillBranch("Jet_smearUp_pt", pt_smear_up)
-            self.out.fillBranch("Jet_smearDn_pt", pt_smear_dn)
-            self.out.fillBranch("Jet_smearUp_mass", mass_smear_up)
-            self.out.fillBranch("Jet_smearDn_mass", mass_smear_dn)
-            self.out.fillBranch("Jet_scaleUp_pt", pt_scale_up)
-            self.out.fillBranch("Jet_scaleDn_pt", pt_scale_dn)
-            self.out.fillBranch("Jet_scaleUp_mass", mass_scale_up)
-            self.out.fillBranch("Jet_scaleDn_mass", mass_scale_dn)
+            # JES total
+            self.out.fillBranch("Jet_pt_jesTotalUp", pt_scale_up)
+            self.out.fillBranch("Jet_pt_jesTotalDown", pt_scale_dn)
+            self.out.fillBranch("Jet_mass_jesTotalUp", mass_scale_up)
+            self.out.fillBranch("Jet_mass_jesTotalDown", mass_scale_dn)
 
+            # JER variations
+            self.out.fillBranch("Jet_pt_jerUp", pt_smear_up)
+            self.out.fillBranch("Jet_pt_jerDown", pt_smear_dn)
+            self.out.fillBranch("Jet_mass_jerUp", mass_smear_up)
+            self.out.fillBranch("Jet_mass_jerDown", mass_smear_dn)
+
+            # JES regrouped sources
             for name in pt_sources_up:
                 self.out.fillBranch(f"Jet_pt_jes{name}Up", pt_sources_up[name])
                 self.out.fillBranch(f"Jet_pt_jes{name}Down", pt_sources_dn[name])
