@@ -34,28 +34,44 @@ class jetVMAP(Module):
         return phi
 
     def analyze(self, event):
+        
         '''nominal “loose selection”
         - jet pT > 15 GeV
         - tight jet ID
         - jet EM fraction (charged + neutral) < 0.9
         - jets that don't overlap with PF muon (dR < 0.2)
-        '''
-        jets = Collection(event, "Jet")
+        '''     
+        jets  = Collection(event, "Jet")
+        muons = Collection(event, "Muon")
         veto_flag = False
 
+        for jet in jets:
+            if (jet.pt > 15 
+                and (jet.jetId == 2 or jet.jetId == 6) 
+                and (jet.chEmEF + jet.neEmEF) < 0.9):
 
-        for i, jet in enumerate(jets):
-            if (jet.pt> 15 and (jet.jetId ==2 or jet.jetId ==6) and (jet.chEmEF + jet.neEmEF)<0.9 and jet.muonIdx1 == -1 and jet.muonIdx2 == -1):
+                # Build jet TLorentzVector
+                jet_p4 = ROOT.TLorentzVector()
+                jet_p4.SetPtEtaPhiM(jet.pt, jet.eta, jet.phi, jet.mass)
 
-                # Correct phi and evaluate veto map
+                # Check overlap with all muons
+                overlap = False
+                for mu in muons:
+                    mu_p4 = ROOT.TLorentzVector()
+                    mu_p4.SetPtEtaPhiM(mu.pt, mu.eta, mu.phi, mu.mass)
+                    if jet_p4.DeltaR(mu_p4) < 0.2:
+                        overlap = True
+                        break
+
+                if overlap:
+                    continue  # skip this jet, since it overlaps with a muon
+
+                # If jet passes selection and does not overlap → apply veto map
                 phi = self.fixPhi(jet.phi)
                 veto_map_value = self.evaluator_VETO.evaluate(self.veto_map_name, jet.eta, phi)
-
-                # Check if the jet is vetoed
                 if veto_map_value > 0:
-                    veto_flag = True  # Set flag if a vetoed jet is found
-                    break  # Break out of the loop since we only need one veto to trigger
+                    veto_flag = True
+                    break
 
-        # Fill the branch with the veto result
         self.out.fillBranch("Flag_JetVetoed", veto_flag)
         return True
