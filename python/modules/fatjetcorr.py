@@ -15,6 +15,8 @@ from PhysicsTools.NanoAODTools.postprocessing.framework.datamodel import Collect
 import numpy as np
 import awkward as ak
 import correctionlib
+import warnings
+
 
 
 # -----------------------------
@@ -67,8 +69,9 @@ def jer_smear(pt_gen, jetPt, etaJet, jer, jer_rand_gauss, jersf, variation, forc
     min_jet_pt = (1e-2) / np.cosh(etaJet)
     min_jet_pt_corr = min_jet_pt / jetPt
 
-    smearfact = ak.where(doHybrid, detSmear, stochSmear)
-    smearfact = ak.where((smearfact * jetPt) < min_jet_pt, min_jet_pt_corr, smearfact)
+    smearfact = np.where(doHybrid, detSmear, stochSmear)
+    smearfact = np.where((smearfact * jetPt) < min_jet_pt, min_jet_pt_corr, smearfact)
+
     return smearfact
 
 
@@ -90,26 +93,24 @@ class fatJetJERC(Module):
                  overwritePt=False, 
                  usePhiDependentJEC=False, 
                  useRunDependentJEC=False,
-                 forceStochastic=False):
+                 forceStochastic=False,
+                 isMC=False):
         """Correct fatjets following JME POG recommendations."""
 
         self.overwritePt = overwritePt
         self.usePhiDependentJEC = usePhiDependentJEC
         self.useRunDependentJEC = useRunDependentJEC
         self.forceStochastic = forceStochastic
+        self.is_mc = isMC
 
         # Load correction JSONs
         self.evaluator_JERC = correctionlib.CorrectionSet.from_file(json_JERC)
-        if json_JERsmear is not None:
-            self.evaluator_jer = correctionlib.CorrectionSet.from_file(json_JERsmear)
-        else:
-            self.evaluator_jer = None
+
         self.evaluator_L1 = self.evaluator_JERC[L1Key]
         self.evaluator_L2 = self.evaluator_JERC[L2Key]
         self.evaluator_L3 = self.evaluator_JERC[L3Key]
         self.evaluator_L2L3 = self.evaluator_JERC[L2L3Key]
 
-        self.is_mc = False
         self.evaluator_JERsmear = None
         self.evaluator_JER = None
         self.evaluator_JERsf = None
@@ -117,13 +118,31 @@ class fatJetJERC(Module):
         self.jes_sources = []
         self.use_json_smear = False
 
-        if smearKey is not None:  # JER is MC-only
-            self.evaluator_JERsmear = self.evaluator_jer[smearKey] if smearKey in self.evaluator_jer else None
-            self.use_json_smear = self.evaluator_JERsmear is not None
-            self.evaluator_JER = self.evaluator_JERC[JERKey]
-            self.evaluator_JERsf = self.evaluator_JERC[JERsfKey]
-            self.evaluator_JES = self.evaluator_JERC[scaleTotalKey]
-            self.is_mc = True
+        if self.is_mc:
+            # Load JER JSON if provided
+            if json_JERsmear is not None:
+                self.evaluator_jer = correctionlib.CorrectionSet.from_file(json_JERsmear)
+            else:
+                self.evaluator_jer = None
+
+            # Use smearKey if available, otherwise fallback
+            if smearKey and self.evaluator_jer and smearKey in self.evaluator_jer:
+                self.evaluator_JERsmear = self.evaluator_jer[smearKey]
+                self.use_json_smear = True
+            else:
+                self.use_json_smear = False
+                warnings.warn("[fatJetJERC WARNING] No smearKey JSON found → using stochastic Coffea-style fallback smearing.")
+
+            # JER resolution & SF
+            if JERKey:
+                self.evaluator_JER = self.evaluator_JERC[JERKey]
+            if JERsfKey:
+                self.evaluator_JERsf = self.evaluator_JERC[JERsfKey]
+
+            # JES total unc
+            if scaleTotalKey:
+                self.evaluator_JES = self.evaluator_JERC[scaleTotalKey]
+
 
             # JES regrouped uncertainty sources
             self.jes_sources = [
@@ -152,15 +171,24 @@ class fatJetJERC(Module):
 
             for src in self.jes_sources:
                 name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
+                name = name.replace("Regrouped_", "")
                 self.out.branch(f"FatJet_pt_jes{name}Up", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_pt_jes{name}Down", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Up", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Down", "F", lenVar="nFatJet")
 
+    def fixPhi(self, phi):
+        if phi > np.pi:
+            phi -= 2*np.pi
+        elif phi < -np.pi:
+            phi += 2*np.pi
+        return phi
+
+
     def analyze(self, event):
         jets = Collection(event, "FatJet")
         if self.is_mc:
-            gen_jets = Collection(event, "GenJet")
+            gen_jets = Collection(event, "GenJetAK8")
             gen_jets_pt = np.array([g.pt for g in gen_jets])
             gen_jets_eta = np.array([g.eta for g in gen_jets])
             gen_jets_phi = np.array([g.phi for g in gen_jets])
@@ -234,19 +262,20 @@ class fatJetJERC(Module):
                 JERsf_up = self.evaluator_JERsf.evaluate(jet.eta, jet.pt, "up")
                 JERsf_dn = self.evaluator_JERsf.evaluate(jet.eta, jet.pt, "down")
 
-                # gen match
-                pt_gen = -1
-                for gpt, geta, gphi in zip(gen_jets_pt, gen_jets_eta, gen_jets_phi):
-                    if np.sqrt((jet.eta - geta)**2 + (jet.phi - gphi)**2) < 0.2:
-                        pt_gen = gpt
-                        break
+                # gen-jet matching
+                delta_eta = jet.eta - gen_jets_eta
+                fixPhi = np.vectorize(self.fixPhi, otypes=[float])
+                delta_phi = fixPhi(jet.phi - gen_jets_phi)
+                deltaR = np.sqrt(delta_eta**2 + delta_phi**2)
+                mask = (np.abs(pt_JEC - gen_jets_pt) < 3 * pt_JEC * JER) & (deltaR < 0.2)
+                pt_gen = gen_jets_pt[mask][0] if np.any(mask) else -1
 
                 if self.use_json_smear:
                     JERsmear = self.evaluator_JERsmear.evaluate(pt_JEC, jet.eta, pt_gen, event.Rho_fixedGridRhoFastjetAll, event.event, JER, JERsf)
                     JERsmear_up = self.evaluator_JERsmear.evaluate(pt_JEC, jet.eta, pt_gen, event.Rho_fixedGridRhoFastjetAll, event.event, JER, JERsf_up)
                     JERsmear_dn = self.evaluator_JERsmear.evaluate(pt_JEC, jet.eta, pt_gen, event.Rho_fixedGridRhoFastjetAll, event.event, JER, JERsf_dn)
                 else:
-                    rand_val = float(rand_gauss(np.array([jet.pt]))[0])
+                    rand_val = float(rand_gauss(ak.Array([jet.pt]))[0])
                     jersf_array = np.array([[JERsf, JERsf_up, JERsf_dn]], dtype=np.float32)
                     JERsmear = float(jer_smear(pt_gen, pt_JEC, jet.eta, JER, rand_val, jersf_array, 0, self.forceStochastic))
                     JERsmear_up = float(jer_smear(pt_gen, pt_JEC, jet.eta, JER, rand_val, jersf_array, 1, self.forceStochastic))
@@ -278,6 +307,7 @@ class fatJetJERC(Module):
                 for src in self.jes_sources:
                     unc = self.evaluator_JERC[src].evaluate(jet.eta, pt_JEC)
                     name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
+                    name = name.replace("Regrouped_", "")
                     pt_sources_up.setdefault(name, []).append(pt_JEC * (1 + unc))
                     pt_sources_dn.setdefault(name, []).append(pt_JEC * (1 - unc))
                     mass_sources_up.setdefault(name, []).append(mass_JEC * (1 + unc))
