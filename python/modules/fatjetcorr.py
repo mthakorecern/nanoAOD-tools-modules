@@ -107,9 +107,9 @@ class fatJetJERC(Module):
         self.evaluator_JERC = correctionlib.CorrectionSet.from_file(json_JERC)
 
         self.evaluator_L1 = self.evaluator_JERC[L1Key]
-        if "PUPPI" in L1Key:
+        if "Puppi" in L1Key:
             self.is_puppi = True
-            warnings.warn("Detected PUPPI jets -> L1 corrections are dummy, will use jet.pt directly.")
+            print("Detected PUPPI jets -> L1 corrections are dummy, will use jet.pt directly.")
         else:
             self.is_puppi = False
         
