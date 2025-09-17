@@ -267,7 +267,7 @@ class fatJetJERC(Module):
                 fixPhi = np.vectorize(self.fixPhi, otypes=[float])
                 delta_phi = fixPhi(jet.phi - gen_jets_phi)
                 deltaR = np.sqrt(delta_eta**2 + delta_phi**2)
-                mask = (np.abs(pt_JEC - gen_jets_pt) < 3 * pt_JEC * JER) & (deltaR < 0.2)
+                mask = (np.abs(pt_JEC - gen_jets_pt) < 3 * pt_JEC * JER) & (deltaR < 0.4)
                 pt_gen = gen_jets_pt[mask][0] if np.any(mask) else -1
 
                 if self.use_json_smear:
