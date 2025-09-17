@@ -107,6 +107,12 @@ class fatJetJERC(Module):
         self.evaluator_JERC = correctionlib.CorrectionSet.from_file(json_JERC)
 
         self.evaluator_L1 = self.evaluator_JERC[L1Key]
+        if "PUPPI" in L1Key:
+            self.is_puppi = True
+            warnings.warn("Detected PUPPI jets -> L1 corrections are dummy, will use jet.pt directly.")
+        else:
+            self.is_puppi = False
+        
         self.evaluator_L2 = self.evaluator_JERC[L2Key]
         self.evaluator_L3 = self.evaluator_JERC[L3Key]
         self.evaluator_L2L3 = self.evaluator_JERC[L2L3Key]
@@ -203,8 +209,20 @@ class fatJetJERC(Module):
         mass_sources_up, mass_sources_dn = {}, {}
 
         for jet in jets:
-            pt_raw = jet.pt * (1 - jet.rawFactor)
-            mass_raw = jet.mass * (1 - jet.rawFactor)
+            # -----------------------------
+            # Choose raw pt depending on jet type
+            # -----------------------------
+            if self.is_puppi:  
+                # heuristic: check key name
+                # For PUPPI jets: L1 is dummy, so just use jet.pt directly
+#                print(f"These are PUPPI Jets, so dummy L1 Corrections.")
+                pt_raw = jet.pt
+                mass_raw = jet.mass
+            else:
+                # For CHS jets: reconstruct raw using rawFactor
+                pt_raw = jet.pt * (1 - jet.rawFactor)
+                mass_raw = jet.mass * (1 - jet.rawFactor)
+
 
             # assume: pt_raw, jet.eta, jet.phi, jet.area, event.Rho_fixedGridRhoFastjetAll, event.run already exist
 

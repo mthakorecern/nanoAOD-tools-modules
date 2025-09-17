@@ -88,6 +88,13 @@ class jetJERC(Module):
         self.evaluator_JERC = correctionlib.CorrectionSet.from_file(json_JERC)
 
         self.evaluator_L1 = self.evaluator_JERC[L1Key]
+        if "PUPPI" in L1Key:
+            self.is_puppi = True
+            warnings.warn("Detected PUPPI jets -> L1 corrections are dummy, will use jet.pt directly.")
+        else:
+            self.is_puppi = False
+
+
         self.evaluator_L2 = self.evaluator_JERC[L2Key]
         self.evaluator_L3 = self.evaluator_JERC[L3Key]
         self.evaluator_L2L3 = self.evaluator_JERC[L2L3Key]
@@ -186,10 +193,19 @@ class jetJERC(Module):
         mass_sources_up, mass_sources_dn = {}, {}
 
         for jet in jets:
-            pt_raw = jet.pt * (1 - jet.rawFactor)
-            mass_raw = jet.mass * (1 - jet.rawFactor)
-
-            # assume: pt_raw, jet.eta, jet.phi, jet.area, event.Rho_fixedGridRhoFastjetAll, event.run already exist
+            # -----------------------------
+            # Choose raw pt depending on jet type
+            # -----------------------------
+            if self.is_puppi:  
+                # heuristic: check key name
+                # For PUPPI jets: L1 is dummy, so just use jet.pt directly
+#                print(f"These are PUPPI Jets, so dummy L1 Corrections.")
+                pt_raw = jet.pt
+                mass_raw = jet.mass
+            else:
+                # For CHS jets: reconstruct raw using rawFactor
+                pt_raw = jet.pt * (1 - jet.rawFactor)
+                mass_raw = jet.mass * (1 - jet.rawFactor)
 
             # L1FastJet expects: ['JetA', 'JetEta', 'JetPt', 'Rho']
             val_L1 = self.evaluator_L1.evaluate(
@@ -200,7 +216,7 @@ class jetJERC(Module):
             )
             pt_L1 = pt_raw * val_L1
 
-            # L2Relative expects: ['JetEta', 'JetPhi', 'JetPt']
+            # L2Relative
             val_L2 = self.evaluator_L2.evaluate(
                 float(jet.eta),
                 float(jet.phi),
@@ -208,30 +224,22 @@ class jetJERC(Module):
             )
             pt_L2 = pt_L1 * val_L2
 
-            # L3Absolute expects: ['JetEta', 'JetPt']
+            # L3Absolute
             val_L3 = self.evaluator_L3.evaluate(
                 float(jet.eta),
                 float(pt_L2)
             )
             pt_L3 = pt_L2 * val_L3
 
-            # ------------------------------
-            # L2L3 evaluation (MC vs Data)
-            # ------------------------------
+            # L2L3 residuals (Data vs MC)
             inputs_L2L3 = self.evaluator_L2L3.inputs
-
             if "run" in [inp.name for inp in inputs_L2L3]:
-                # Data JSON expects run number
                 val_L2L3 = self.evaluator_L2L3.evaluate(
-                    float(event.run),
-                    float(jet.eta),
-                    float(pt_L3)
+                    float(event.run), float(jet.eta), float(pt_L3)
                 )
             else:
-                # MC JSON does not expect run
                 val_L2L3 = self.evaluator_L2L3.evaluate(
-                    float(jet.eta),
-                    float(pt_L3)
+                    float(jet.eta), float(pt_L3)
                 )
 
             pt_JEC = pt_L3 * val_L2L3
