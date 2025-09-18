@@ -165,6 +165,11 @@ class fatJetJERC(Module):
         self.out.branch("FatJet_pt_nom", "F", lenVar="nFatJet")
         self.out.branch("FatJet_mass_nom", "F", lenVar="nFatJet", limitedPrecision=12)
 
+        self.out.branch("FatJet_msoftdrop_nom", "F", lenVar="nFatJet", limitedPrecision=12)
+        self.out.branch("FatJet_globalParT3Xbb_mass", "F", lenVar="nFatJet", limitedPrecision=12)
+
+
+
         if self.is_mc:
             self.out.branch("FatJet_pt_jesTotalUp", "F", lenVar="nFatJet")
             self.out.branch("FatJet_pt_jesTotalDown", "F", lenVar="nFatJet")
@@ -174,6 +179,10 @@ class fatJetJERC(Module):
             self.out.branch("FatJet_pt_jerDown", "F", lenVar="nFatJet")
             self.out.branch("FatJet_mass_jerUp", "F", lenVar="nFatJet", limitedPrecision=12)
             self.out.branch("FatJet_mass_jerDown", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_msoftdrop_scaleUp", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_msoftdrop_scaleDown", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_msoftdrop_jerUp", "F", lenVar="nFatJet", limitedPrecision=12)
+            self.out.branch("FatJet_msoftdrop_jerDown", "F", lenVar="nFatJet", limitedPrecision=12)
 
             for src in self.jes_sources:
                 name = src.split("MC_")[1].replace("_AK4PFPuppi", "")
@@ -182,6 +191,8 @@ class fatJetJERC(Module):
                 self.out.branch(f"FatJet_pt_jes{name}Down", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Up", "F", lenVar="nFatJet")
                 self.out.branch(f"FatJet_mass_jes{name}Down", "F", lenVar="nFatJet")
+                self.out.branch(f"FatJet_msoftdrop_jes{name}Up", "F", lenVar="nFatJet")
+                self.out.branch(f"FatJet_msoftdrop_jes{name}Down", "F", lenVar="nFatJet")
 
     def fixPhi(self, phi):
         if phi > np.pi:
@@ -208,6 +219,14 @@ class fatJetJERC(Module):
         pt_sources_up, pt_sources_dn = {}, {}
         mass_sources_up, mass_sources_dn = {}, {}
 
+        globalParT3_mass = []
+
+        msoftdrop_nom = []
+        msoftdrop_scaleUp, msoftdrop_scaleDown = [], []
+        msoftdrop_smearUp, msoftdrop_smearDown = [], []
+        msoftdrop_sources_up, msoftdrop_sources_dn = {}, {}
+
+
         for jet in jets:
             # -----------------------------
             # Choose raw pt depending on jet type
@@ -218,6 +237,7 @@ class fatJetJERC(Module):
 #                print(f"These are PUPPI Jets, so dummy L1 Corrections.")
                 pt_raw = jet.pt
                 mass_raw = jet.mass
+
             else:
                 # For CHS jets: reconstruct raw using rawFactor
                 pt_raw = jet.pt * (1 - jet.rawFactor)
@@ -273,12 +293,19 @@ class fatJetJERC(Module):
 
             JEC = pt_JEC / pt_raw
             mass_JEC = mass_raw * JEC
+            msoftdrop_JEC = jet.msoftdrop * JEC
+
+            if hasattr(jet, "globalParT3_massCorrX2p"):
+                gp3_mass = jet.globalParT3_massCorrX2p * jet.mass * (1 - jet.rawFactor)
+                globalParT3_mass.append(gp3_mass)
 
             if self.is_mc:
                 JER = self.evaluator_JER.evaluate(jet.eta, pt_JEC, event.Rho_fixedGridRhoFastjetAll)
                 JERsf = self.evaluator_JERsf.evaluate(jet.eta, jet.pt, "nom")
                 JERsf_up = self.evaluator_JERsf.evaluate(jet.eta, jet.pt, "up")
                 JERsf_dn = self.evaluator_JERsf.evaluate(jet.eta, jet.pt, "down")
+
+
 
                 # gen-jet matching
                 delta_eta = jet.eta - gen_jets_eta
@@ -309,6 +336,10 @@ class fatJetJERC(Module):
 
                 pt_corr.append(pt_JEC * JERsmear_nominal)
                 mass_corr.append(mass_JEC * JERsmear_nominal)
+                msoftdrop_nom.append(msoftdrop_JEC *JERsmear_nominal )
+
+
+
                 pt_smear_up.append(pt_JEC * JERsmear_up)
                 pt_smear_dn.append(pt_JEC * JERsmear_dn)
                 mass_smear_up.append(mass_JEC * JERsmear_up)
@@ -321,6 +352,13 @@ class fatJetJERC(Module):
                 mass_scale_up.append(mass_JEC * (1 + JESunc))
                 mass_scale_dn.append(mass_JEC * (1 - JESunc))
 
+                scale_unc = self.evaluator_JES.evaluate(jet.eta, pt_JEC)
+                msoftdrop_scaleUp.append(msoftdrop_JEC * (1 + scale_unc))
+                msoftdrop_scaleDown.append(msoftdrop_JEC * (1 - scale_unc))
+
+                msoftdrop_smearUp.append(msoftdrop_JEC * JERsmear_up)
+                msoftdrop_smearDown.append(msoftdrop_JEC * JERsmear_dn)
+
                 # regrouped sources
                 for src in self.jes_sources:
                     unc = self.evaluator_JERC[src].evaluate(jet.eta, pt_JEC)
@@ -330,9 +368,14 @@ class fatJetJERC(Module):
                     pt_sources_dn.setdefault(name, []).append(pt_JEC * (1 - unc))
                     mass_sources_up.setdefault(name, []).append(mass_JEC * (1 + unc))
                     mass_sources_dn.setdefault(name, []).append(mass_JEC * (1 - unc))
+
+                    msoftdrop_sources_up.setdefault(name, []).append(msoftdrop_JEC * (1 + unc))
+                    msoftdrop_sources_dn.setdefault(name, []).append(msoftdrop_JEC * (1 - unc))
             else:
                 pt_corr.append(pt_JEC)
                 mass_corr.append(mass_JEC)
+                msoftdrop_nom.append(msoftdrop_JEC)
+
 
             pt_uncorr.append(pt_raw)
             mass_uncorr.append(mass_raw)
@@ -342,8 +385,13 @@ class fatJetJERC(Module):
             self.out.fillBranch("FatJet_uncorrected_pt", pt_uncorr)
             self.out.fillBranch("FatJet_uncorrected_mass", mass_uncorr)
 
+
+
         self.out.fillBranch("FatJet_pt_nom", pt_corr)
         self.out.fillBranch("FatJet_mass_nom", mass_corr)
+        
+        self.out.fillBranch("FatJet_globalParT3Xbb_mass", globalParT3_mass)
+        self.out.fillBranch("FatJet_msoftdrop_nom", msoftdrop_nom )
 
         if self.is_mc:
             self.out.fillBranch("FatJet_pt_jerUp", pt_smear_up)
@@ -355,10 +403,18 @@ class fatJetJERC(Module):
             self.out.fillBranch("FatJet_mass_jesTotalUp", mass_scale_up)
             self.out.fillBranch("FatJet_mass_jesTotalDown", mass_scale_dn)
 
+            self.out.fillBranch("FatJet_msoftdrop_jerUp", msoftdrop_smearUp)
+            self.out.fillBranch("FatJet_msoftdrop_jerDown", msoftdrop_smearDown)
+            self.out.fillBranch("FatJet_msoftdrop_jesTotalUp", msoftdrop_scaleUp)   
+            self.out.fillBranch("FatJet_msoftdrop_jesTotalDown", msoftdrop_scaleDown)
+
             for name in pt_sources_up:
                 self.out.fillBranch(f"FatJet_pt_jes{name}Up", pt_sources_up[name])
                 self.out.fillBranch(f"FatJet_pt_jes{name}Down", pt_sources_dn[name])
                 self.out.fillBranch(f"FatJet_mass_jes{name}Up", mass_sources_up[name])
                 self.out.fillBranch(f"FatJet_mass_jes{name}Down", mass_sources_dn[name])
+
+                self.out.fillBranch(f"FatJet_msoftdrop_jes{name}Up", msoftdrop_sources_up[name])
+                self.out.fillBranch(f"FatJet_msoftdrop_jes{name}Down", msoftdrop_sources_dn[name])
 
         return True
