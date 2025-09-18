@@ -228,6 +228,10 @@ class fatJetJERC(Module):
 
 
         for jet in jets:
+            
+            if hasattr(jet, "globalParT3_massCorrX2p"):
+                gp3_mass = jet.globalParT3_massCorrX2p * jet.mass * (1 - jet.rawFactor)
+                globalParT3_mass.append(gp3_mass)
             # -----------------------------
             # Choose raw pt depending on jet type
             # -----------------------------
@@ -237,6 +241,7 @@ class fatJetJERC(Module):
 #                print(f"These are PUPPI Jets, so dummy L1 Corrections.")
                 pt_raw = jet.pt
                 mass_raw = jet.mass
+
 
             else:
                 # For CHS jets: reconstruct raw using rawFactor
@@ -295,9 +300,7 @@ class fatJetJERC(Module):
             mass_JEC = mass_raw * JEC
             msoftdrop_JEC = jet.msoftdrop * JEC
 
-            if hasattr(jet, "globalParT3_massCorrX2p"):
-                gp3_mass = jet.globalParT3_massCorrX2p * jet.mass * (1 - jet.rawFactor)
-                globalParT3_mass.append(gp3_mass)
+
 
             if self.is_mc:
                 JER = self.evaluator_JER.evaluate(jet.eta, pt_JEC, event.Rho_fixedGridRhoFastjetAll)
