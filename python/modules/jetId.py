@@ -19,9 +19,12 @@ class jetId(Module):
         - jetType: "AK4PUPPI" or "AK4CHS"
         """
         self.evaluator = correctionlib.CorrectionSet.from_file(json)
-        self.key_tight = f"{jetType}_Tight"
-        self.key_tightLeptonVeto = f"{jetType}_TightLeptonVeto"
+        #self.key_tight = f"{jetType}_Tight"
+        #self.key_tightLeptonVeto = f"{jetType}_TightLeptonVeto"
         
+        self.corr_tight = self.evaluator[f"{jetType}_Tight"]
+        self.corr_tightLeptonVeto = self.evaluator[f"{jetType}_TightLeptonVeto"]
+    
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
         self.out.branch("Jet_jetId", "b", lenVar="nJet", title="Jet ID flag: bit2 is tight, bit3 is tightLepVeto (recomputed using JSON)") # Save as UChar_t as it was up to nanoAODv14
@@ -34,7 +37,7 @@ class jetId(Module):
         for ijet, jet in enumerate(jets):
             multiplicity = jet.chMultiplicity + jet.neMultiplicity
 
-            passTight = self.evaluator[self.key_tight].evaluate(
+            passTight = self.corr_tight.evaluate(
                 jet.eta,
                 jet.chHEF,
                 jet.neHEF,
@@ -46,7 +49,7 @@ class jetId(Module):
                 multiplicity
             )
 
-            passTightLepVeto = self.evaluator[self.key_tightLeptonVeto].evaluate(
+            passTightLepVeto = self.corr_tightLeptonVeto.evaluate(
                 jet.eta,
                 jet.chHEF,
                 jet.neHEF,

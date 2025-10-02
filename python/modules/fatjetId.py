@@ -19,9 +19,9 @@ class fatJetId(Module):
         - jetType: default "AK8PUPPI" (alternatives may exist if JSON provides)
         """
         self.evaluator = correctionlib.CorrectionSet.from_file(json)
-        self.key_tight = f"{jetType}_Tight"
-        self.key_tightLeptonVeto = f"{jetType}_TightLeptonVeto"
-
+        self.corr_tight = self.evaluator[f"{jetType}_Tight"]
+        self.corr_tightLeptonVeto = self.evaluator[f"{jetType}_TightLeptonVeto"]
+    
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
         # Add branch for FatJet_jetId, same encoding: bit2 = tight, bit3 = tightLepVeto
@@ -35,7 +35,7 @@ class fatJetId(Module):
         for ijet, jet in enumerate(fatjets):
             multiplicity = jet.chMultiplicity + jet.neMultiplicity
 
-            passTight = self.evaluator[self.key_tight].evaluate(
+            passTight = self.corr_tight.evaluate(
                 jet.eta,
                 jet.chHEF,
                 jet.neHEF,
@@ -47,7 +47,7 @@ class fatJetId(Module):
                 multiplicity
             )
 
-            passTightLepVeto = self.evaluator[self.key_tightLeptonVeto].evaluate(
+            passTightLepVeto = self.corr_tightLeptonVeto.evaluate(
                 jet.eta,
                 jet.chHEF,
                 jet.neHEF,
