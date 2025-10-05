@@ -203,7 +203,10 @@ class ApplyJercAll(Module):
             suffix = branch_name_from_sys(sys, self.year_unc)
             #print("Creating branches with suffix:", suffix)
             self.out.branch(f"Jet_pt_{suffix}", "F", lenVar="nJet")
+            self.out.branch(f"Jet_mass_{suffix}", "F", lenVar="nJet")
+
             self.out.branch(f"FatJet_pt_{suffix}", "F", lenVar="nFatJet")
+            self.out.branch(f"FatJet_mass_{suffix}", "F", lenVar="nFatJet")
             self.out.branch(f"FatJet_msoftdrop_{suffix}", "F", lenVar="nFatJet")
             if applyOnMET:
                 self.out.branch(f"PuppiMET_pt_{suffix}", "F")
@@ -243,7 +246,8 @@ class ApplyJercAll(Module):
         for sys in self.jet_pt_systematics:
             suffix = branch_name_from_sys(sys, self.year_unc)
             #print("Applying corrections for systematics:", suffix)
-            jet_corr_pts, fat_corr_pts, fat_corr_msoft = [], [], []
+            jet_corr_pts, jet_corr_mass = [], []
+            fat_corr_pts, fat_corr_mass, fat_corr_msoft = [], [], []
 
             # --- AK4 jets ---
             for j in jets:
@@ -259,6 +263,8 @@ class ApplyJercAll(Module):
                   - Then apply JER systematics (only in MC, using genJet match or smearing)
                 """
                 pt_raw = j.pt * (1.0 - j.rawFactor)
+                mass_raw = j.mass * (1.0 - j.rawFactor)
+
                 
                 c1 = self.refsAK4.cL1.evaluate(j.area,j.eta,pt_raw,rho)
                 pt = pt_raw * c1
@@ -306,8 +312,11 @@ class ApplyJercAll(Module):
                         z = normal_from_seeds(seedA,seedB)
                         sigma = math.sqrt(max(sf*sf-1.0,0.0)) * reso
                         pt_corr *= max(0.0, 1.0 + z*sigma)
-                
+
+                mass_corr = mass_raw * (pt_corr / pt_raw) if pt_raw > 0 else mass_raw
                 jet_corr_pts.append(pt_corr)
+                jet_corr_mass.append(mass_corr)
+
 
             # --- AK8 jets ---
             for fj in fatjets:
@@ -324,6 +333,10 @@ class ApplyJercAll(Module):
                   - Also propagate correction to softdrop mass
                 """
                 pt_raw=fj.pt * (1.0-fj.rawFactor)
+                mass_raw = fj.mass * (1.0 - fj.rawFactor)
+                msoft_raw = fj.msoftdrop * (1.0 - fj.rawFactor)
+
+
                 
                 c1 = self.refsAK4.cL1.evaluate(fj.area,fj.eta,pt_raw,rho)
                 pt = pt_raw * c1
@@ -370,14 +383,18 @@ class ApplyJercAll(Module):
                         sigma = math.sqrt(max(sf * sf - 1.0, 0.0)) * reso
                         pt_corr *= max(0.0, 1.0 + z*sigma)
                 
-                msoft_raw = fj.msoftdrop * (1.0-fj.rawFactor)
-                scale = pt_corr/pt_raw if pt_raw>0 else 1.0
+                mass_corr  = mass_raw  * (pt_corr / pt_raw) if pt_raw > 0 else mass_raw
+                msoft_corr = msoft_raw * (pt_corr / pt_raw) if pt_raw > 0 else msoft_raw
+
                 fat_corr_pts.append(pt_corr)
-                fat_corr_msoft.append(msoft_raw * scale)
+                fat_corr_mass.append(mass_corr)
+                fat_corr_msoft.append(msoft_corr)
 
             suffix = branch_name_from_sys(sys,self.year_unc)
             self.out.fillBranch(f"Jet_pt_{suffix}",jet_corr_pts)
+            self.out.fillBranch(f"Jet_mass_{suffix}", jet_corr_mass)
             self.out.fillBranch(f"FatJet_pt_{suffix}",fat_corr_pts)
+            self.out.fillBranch(f"FatJet_mass_{suffix}", fat_corr_mass)
             self.out.fillBranch(f"FatJet_msoftdrop_{suffix}",fat_corr_msoft)
             #print("  Filled Jet_pt_", suffix, "with", len(jet_corr_pts), "jets")
             #print("  Filled FatJet_pt_", suffix, "with", len(fat_corr_pts), "fatjets")
