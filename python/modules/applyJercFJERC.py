@@ -33,11 +33,6 @@ def representative_run_number(year: str, run: int) -> float:
     if year == "2024": return 379412.0
     return float(run)
 
-def is_mc(isData: bool) -> bool:
-    """Check if sample is MC or Data.
-    Returns True if input is Data flag is False."""
-    return not isData
-
 def normal_from_seeds(seedA: int, seedB: int) -> float:
     """Generate a reproducible Gaussian random number.
     Uses seeds from run, lumi, event, and jet index."""
@@ -76,7 +71,7 @@ class CorrectionRefs:
         self.cL3 = self.cs[tagNameL3Absolute]
         
         # Since for Monte Carlo: L1 + MC-truth &&  Data: L1 + MC-truth + L2L3Residuals
-        if isData and tagNameL2L3Residual in self.cs:
+        if isData and tagNameL2L3Residual:
             self.cL2L3Res = self.cs[tagNameL2L3Residual]
         else:
             self.cL2L3Res = None        
@@ -152,7 +147,8 @@ def branch_name_from_sys(sys: str, year_unc: str) -> str:
 class ApplyJercAll(Module):
     def __init__(self, year, isData, jercjson, era=None, year_unc="2024"):
         self.year = year
-        self.isData = isData
+        self.isData = bool(isData)
+        self.isMC   = not self.isData
         self.era = era
         self.year_unc = year_unc
         self.jercjson = jercjson
@@ -165,14 +161,14 @@ class ApplyJercAll(Module):
 
         # Correction refs (pass explicit keys)
         self.refsAK4 = CorrectionRefs(
-            tagNameL1FastJet=BRANCH_TO_JSON["L1FastJet"]["DATA" if isData else "MC"],
-            tagNameL2Relative=BRANCH_TO_JSON["L2Relative"]["DATA" if isData else "MC"],
-            tagNameL3Absolute=BRANCH_TO_JSON["L3Absolute"]["DATA" if isData else "MC"],
-            tagNameL2L3Residual=BRANCH_TO_JSON["L2L3Residual"]["DATA"] if isData else None,
-            tagNamePtResolution=BRANCH_TO_JSON["jer"]["PtResolution"] if not isData else None,
-            tagNameJerScaleFactor=BRANCH_TO_JSON["jer"]["ScaleFactor"] if not isData else None,
+            tagNameL1FastJet=BRANCH_TO_JSON["L1FastJet"]["DATA" if self.isData else "MC"],
+            tagNameL2Relative=BRANCH_TO_JSON["L2Relative"]["DATA" if self.isData else "MC"],
+            tagNameL3Absolute=BRANCH_TO_JSON["L3Absolute"]["DATA" if self.isData else "MC"],
+            tagNameL2L3Residual=BRANCH_TO_JSON["L2L3Residual"]["DATA"] if self.isData else None,
+            tagNamePtResolution=BRANCH_TO_JSON["jer"]["PtResolution"] if self.isMC else None,
+            tagNameJerScaleFactor=BRANCH_TO_JSON["jer"]["ScaleFactor"] if self.isMC else None,
             jercjson=jercjson,
-            isData=isData,
+            isData=self.isData,
         )
         self.refsAK8 = self.refsAK4  # reusing AK4 keys for AK8
         self.csAK4 = self.refsAK4.cs
@@ -181,14 +177,14 @@ class ApplyJercAll(Module):
         """Build the list of systematic variations for jet corrections.
         Includes nominal, all JES (Up/Down) and JER (Up/Down) variations."""
         self.jet_pt_systematics = [""]
-        
-        for base, full in BRANCH_TO_JSON.items():
-            if base.startswith("jes") and isinstance(full, str):
-                for var in ("Up","Down"):
-                    self.jet_pt_systematics.append(f"{base}{var}")
-        
-        for var in ("Up","Down"):
-            self.jet_pt_systematics.append(f"jer{var}")
+
+        if self.isMC:
+            for base, full in BRANCH_TO_JSON.items():
+                if base.startswith("jes") and isinstance(full, str):
+                    for var in ("Up", "Down"):
+                        self.jet_pt_systematics.append(f"{base}{var}")
+            for var in ("Up", "Down"):
+                self.jet_pt_systematics.append(f"jer{var}")
 
         print("Systematic variations to be produced:")
         for sys in self.jet_pt_systematics:
@@ -292,7 +288,7 @@ class ApplyJercAll(Module):
                     pt_corr *= (1 + scale) if var=="Up" else (1 - scale)
 
                 # JER syst
-                if sys.startswith("jer") and is_mc(self.isData):
+                if sys.startswith("jer") and self.isMC:
                     jer_var = "up" if sys.endswith("Up") else "down"
                     reso = self.refsAK4.cReso.evaluate(j.eta,pt_corr,rho)
                     sf = self.refsAK4.cJerSF.evaluate(j.eta,pt_corr,jer_var)
@@ -362,7 +358,7 @@ class ApplyJercAll(Module):
                     scale = self.csAK4[key].evaluate(fj.eta,pt_corr)
                     pt_corr *= (1 + scale) if var == "Up" else ( 1 - scale)
 
-                if sys.startswith("jer") and is_mc(self.isData):
+                if sys.startswith("jer") and self.isMC:
                     jer_var = "up" if sys.endswith("Up") else "down"
                     reso= self.refsAK4.cReso.evaluate(fj.eta,pt_corr,rho)
                     sf= self.refsAK4.cJerSF.evaluate(fj.eta,pt_corr,jer_var)
