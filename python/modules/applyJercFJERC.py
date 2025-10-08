@@ -434,6 +434,14 @@ class ApplyJercAll(Module):
                     # Raw jet pt after undoing JEC
                     pt_raw = j.pt * (1.0 - j.rawFactor)
 
+                    # --- Jet Quality Cut for MET Type-1 propagation ---
+                    if abs(j.eta) > 5.2:
+                        continue
+                    if (j.chEmEF + j.neEmEF) > 0.9:
+                        continue
+                    if pt_corr < 15.0:
+                        continue
+
                     # L1 correction
                     c1 = self.refsAK4.cL1.evaluate(j.area, j.eta, pt_raw, rho)
                     pt_l1 = pt_raw * c1
