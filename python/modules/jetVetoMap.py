@@ -20,19 +20,13 @@ class jetVMAP(Module):
         self.veto_map_name = veto_map_name
         self.evaluator_JVMAP= correctionlib.CorrectionSet.from_file(json_JVMAP)
         self.evaluator_VETO = self.evaluator_JVMAP[corrName]
-        
-        self.epsilon = 1e-6
-        
+                
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.out = wrappedOutputTree
         self.out.branch("Flag_JetVetoed", "O", title="Event veto flag from Jet Veto Map")
     
     def fixPhi(self, phi):
-        if phi > np.pi:
-            return np.pi - self.epsilon
-        elif phi < -np.pi:
-            return -np.pi + self.epsilon
-        return phi
+        return np.arctan2(np.sin(phi), np.cos(phi))
 
     def analyze(self, event):
         
@@ -45,7 +39,7 @@ class jetVMAP(Module):
         veto_flag = False
 
         for jet in jets:
-            if (jet.pt > 15 and jet.jetId == 6 and (jet.chEmEF + jet.neEmEF) < 0.9):
+            if (jet.pt > 15 and (jet.jetId & 2) and (jet.chEmEF + jet.neEmEF) < 0.9):
                 phi = self.fixPhi(jet.phi)
                 if self.evaluator_VETO.evaluate(self.veto_map_name, jet.eta, phi) > 0:
                     veto_flag = True
