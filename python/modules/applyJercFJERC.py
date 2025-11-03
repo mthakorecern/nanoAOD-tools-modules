@@ -245,8 +245,22 @@ class ApplyJercAll(Module):
             jet_corr_pts, jet_corr_mass = [], []
             fat_corr_pts, fat_corr_mass, fat_corr_msoft = [], [], []
 
-            # --- AK4 jets ---
+            # --- AK4–AK8 Overlap Removal (deltaR < 0.6 veto) ---
+            nonoverlap_jets = []
             for j in jets:
+                overlap = False
+                for fj in fatjets:
+                    if fj.pt < 100.0 or abs(fj.eta) > 5.2:
+                        continue
+                    if deltaR(j.eta, j.phi, fj.eta, fj.phi) < 0.6:
+                        overlap = True
+                        break
+                if not overlap:
+                    nonoverlap_jets.append(j)
+
+            # --- AK4 jets (non-overlapping only) ---
+            for j in nonoverlap_jets:
+
                 """
                 AK4 jet correction chain:
                   - Start from raw pt (pt_raw = pt * (1 - rawFactor))
@@ -430,7 +444,7 @@ class ApplyJercAll(Module):
                 met_y = base_met_pt * math.sin(base_met_phi)
 
                 # Loop over jets and recompute Type-1 corrections
-                for j, pt_corr in zip(jets, jet_corr_pts):
+                for j, pt_corr in zip(nonoverlap_jets, jet_corr_pts):
                     # Raw jet pt after undoing JEC
                     pt_raw = j.pt * (1.0 - j.rawFactor)
 
