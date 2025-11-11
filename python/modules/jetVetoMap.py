@@ -39,7 +39,7 @@ class jetVMAP(Module):
         veto_flag = False
 
         for jet in jets:
-            if (jet.pt > 15 and (jet.jetId & 2) and (jet.chEmEF + jet.neEmEF) < 0.9):
+            if (jet.pt > 15 and (jet.jetId & 4) and (jet.chEmEF + jet.neEmEF) < 0.9):
                 phi = self.fixPhi(jet.phi)
                 if self.evaluator_VETO.evaluate(self.veto_map_name, jet.eta, phi) > 0:
                     veto_flag = True
