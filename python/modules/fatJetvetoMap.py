@@ -24,7 +24,7 @@ class fatJetVMAP(Module):
         veto_flag = False
 
         for fatjet in fatjets:
-            if fatjet.pt > 170 and (fatjet.jetId & 4) and (fatjet.chEmEF + fatjet.neEmEF) < 0.9:
+            if fatjet.pt > 170 and (fatjet.jetId == 6) and (fatjet.chEmEF + fatjet.neEmEF) < 0.9:
                 phi = self.fixPhi(fatjet.phi)
                 if self.evaluator_VETO.evaluate(self.veto_map_name, fatjet.eta, phi) > 0:
                     veto_flag = True

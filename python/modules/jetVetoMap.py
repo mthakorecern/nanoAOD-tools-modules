@@ -32,14 +32,14 @@ class jetVMAP(Module):
         
         '''nominal “loose selection”
         - jet pT > 15 GeV
-        - tight jet ID
+        - tightLepVeto jet ID
         - jet EM fraction (charged + neutral) < 0.9
         '''     
         jets  = Collection(event, "Jet")
         veto_flag = False
 
         for jet in jets:
-            if (jet.pt > 15 and (jet.jetId & 4) and (jet.chEmEF + jet.neEmEF) < 0.9):
+            if (jet.pt > 15 and (jet.jetId == 6) and (jet.chEmEF + jet.neEmEF) < 0.9):
                 phi = self.fixPhi(jet.phi)
                 if self.evaluator_VETO.evaluate(self.veto_map_name, jet.eta, phi) > 0:
                     veto_flag = True
