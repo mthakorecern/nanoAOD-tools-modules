@@ -6,7 +6,7 @@ from PhysicsTools.NanoAODTools.postprocessing.framework.eventloop import Module
 from correctionlib import CorrectionSet
 
 class puWeightProducer(Module):
-    def __init__(self, json, key, name="puWeight", doSysVar=True) :
+    def __init__(self, json, key, name="pileupcorrWeight", doSysVar=True) :
         """Add weights.
         Parameters:
             json: full path of json file
