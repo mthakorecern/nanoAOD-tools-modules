@@ -1,5 +1,6 @@
 import os
 import ROOT
+import math
 from ROOT import TH1, TFile
 
 ROOT.PyConfig.IgnoreCommandLineOptions = True
@@ -903,6 +904,118 @@ class KFactorTool:
         ratio = get2016FacDownZ(pt) / get2016QCDZ(pt)
         return sf * ratio
 
+## New Method for searching for events with a boson.
+
+MZ_NOM = 91.188 # (GeV)
+MW_NOM = 80.379 # (GeV)
+
+def FV(gen):
+    v = ROOT.TLorentzVector()
+    v.SetPtEtaPhiM(gen.pt, gen.eta, gen.phi, gen.mass)
+    return v
+
+def charge_from_pdgid(pdgId):
+    ap = abs(pdgId)
+    if ap in (11, 13, 15):
+        return -1 if pdgId > 0 else +1
+    return 0
+
+def collect_fs_objects(genParticles):
+    out = {"e": [], "mu": [], "tau": [], "nu": []}
+    for g in genParticles:
+        ap = abs(g.pdgId)
+        if ap == 11 and g.status == 1:
+            out["e"].append(g)
+        elif ap == 13 and g.status == 1:
+            out["mu"].append(g)
+        elif ap == 15 and g.status == 2:
+            out["tau"].append(g)
+        elif ap in (12, 14, 16) and g.status == 1:
+            out["nu"].append(g)
+    return out
+
+def _best_Z_candidate(objs):
+    best_p4 = None
+    best_dm = float("inf")
+
+    for key in ("e", "mu", "tau"):
+        leptons = objs[key]
+        for i in range(len(leptons)):
+            for j in range(i + 1, len(leptons)):
+                li, lj = leptons[i], leptons[j]
+                if li.pdgId * lj.pdgId >= 0:
+                    continue
+                cand = FV(li) + FV(lj)
+                dm = abs(cand.M() - MZ_NOM)
+                if dm < best_dm:
+                    best_dm = dm
+                    best_p4 = cand
+
+    nus = objs["nu"]
+    for i in range(len(nus)):
+        for j in range(i + 1, len(nus)):
+            ni, nj = nus[i], nus[j]
+            if ni.pdgId + nj.pdgId != 0:
+                continue
+            cand = FV(ni) + FV(nj)
+            dm = abs(cand.M() - MZ_NOM)
+            if dm < best_dm:
+                best_dm = dm
+                best_p4 = cand
+
+    return best_p4, best_dm
+
+def _best_W_candidate(objs):
+    best_p4 = None
+    best_dm = float("inf")
+
+    flavor_map = {"e": 12, "mu": 14, "tau": 16}
+
+    for lkey in ("e", "mu", "tau"):
+        leptons = objs[lkey]
+        nu_abs = flavor_map[lkey]
+        for l in leptons:
+            q = charge_from_pdgid(l.pdgId)  
+            for nu in objs["nu"]:
+                if abs(nu.pdgId) != nu_abs:
+                    continue
+                if (q == -1 and nu.pdgId >= 0):
+                    continue
+                if (q == +1 and nu.pdgId <= 0):
+                    continue
+
+                cand = FV(l) + FV(nu)
+                dm = abs(cand.M() - MW_NOM)
+                if dm < best_dm:
+                    best_dm = dm
+                    best_p4 = cand
+
+    return best_p4, best_dm
+
+def get_GenV_pt(event, want="Z"):
+    genParticles = Collection(event, "GenPart")
+    if want == "Z":
+        bosons = [g for g in genParticles if abs(g.pdgId) == 23 and g.status == 62]
+    else:
+        bosons = [g for g in genParticles if abs(g.pdgId) == 24 and g.status == 62]
+
+    if bosons:
+        boson = max(bosons, key=lambda g: g.pt)
+        return float(boson.pt), True
+
+    objs = collect_fs_objects(genParticles)
+    if want == "Z":
+        cand_p4, _ = _best_Z_candidate(objs)
+    else:
+        cand_p4, _ = _best_W_candidate(objs)
+
+    if cand_p4 is None:
+        return -9.0, False
+
+    return float(cand_p4.Pt()), True
+
+
+
 
 class wandzgenptweight(Module):
     def __init__(self, filename, year="2024", doSysVar=False):
@@ -956,17 +1069,10 @@ class wandzgenptweight(Module):
         GenV_pt = -9
         GenV = []
         sample = os.path.basename(self.filename)
+        
         if search(r"^DYto2L", sample, IGNORECASE):
-            genParticles = Collection(event, "GenPart")
-            GenV = list(
-                [
-                    gen
-                    for gen in genParticles
-                    if (gen.pdgId == 23) and (gen.status == 22)
-                ]
-            )
-            if len(GenV) > 0:
-                GenV_pt = GenV[0].pt
+            GenV_pt, foundV = get_GenV_pt(event, want="Z")
+            if foundV and GenV_pt > 0:
                 ewkZWeight *= self.kFactorTool.getEWKZ(GenV_pt)
                 ewkZDeborahsWeight *= self.kFactorTool.getDeborahEWKZ(GenV_pt)
                 qcdZTo2LWeight *= self.kFactorTool.getQCDZTo2L(GenV_pt)
@@ -976,34 +1082,15 @@ class wandzgenptweight(Module):
                 qcdZTo2LWeightFacDown *= self.kFactorTool.getFacDownZTo2L(GenV_pt)
                 ZnnloWeight = 0.934
 
-                # if self.year == "2016APV":
-                #     combinedWZgenPtWeight = qcdZTo2LWeight * ewkZWeight
-                #     combinedWZgenPtDeborahWeight = qcdZTo2LWeight * ewkZDeborahsWeight
-                # elif self.year == "2016":
-                #     combinedWZgenPtWeight = qcdZTo2LWeight * ewkZWeight
-                #     combinedWZgenPtDeborahWeight = qcdZTo2LWeight * ewkZDeborahsWeight
-                # elif self.year == "2017":
-                #     combinedWZgenPtWeight = qcdZTo2LWeight * ewkZWeight * 0.934
-                #     combinedWZgenPtDeborahWeight = (qcdZTo2LWeight * ewkZDeborahsWeight * 0.934)
                 if self.year == "2024":
                     combinedWZgenPtWeight = qcdZTo2LWeight * ewkZWeight * 0.934
                     combinedWZgenPtDeborahWeight = (qcdZTo2LWeight * ewkZDeborahsWeight * 0.934)
 
             combinedWZgenPtDylanWeight = 1.23
-        # combinedWZgenPtWeight = qcdZTo2LWeight*ewkZWeight*0.934
-        # combinedWZgenPtDeborahWeight = qcdZTo2LWeight*ewkZDeborahsWeight*0.934
 
         elif search(r"^WtoLNu", sample, IGNORECASE):
-            genParticles = Collection(event, "GenPart")
-            GenV = list(
-                [
-                    gen
-                    for gen in genParticles
-                    if (abs(gen.pdgId) == 24) and gen.status == 22
-                ]
-            )
-            if len(GenV) > 0:
-                GenV_pt = GenV[0].pt
+            GenV_pt, foundV = get_GenV_pt(event, want="W")
+            if foundV and GenV_pt > 0:
                 ewkWWeight *= self.kFactorTool.getEWKW(GenV_pt)
                 ewkWDeborahsWeight *= self.kFactorTool.getDeborahEWKW(GenV_pt)
                 qcdWWeight *= self.kFactorTool.getQCDW(GenV_pt)
@@ -1012,21 +1099,7 @@ class wandzgenptweight(Module):
                 qcdWWeightFacUp *= self.kFactorTool.getFacUpW(GenV_pt)
                 qcdWWeightFacDown *= self.kFactorTool.getFacDownW(GenV_pt)
                 WnnloWeight = 0.9135
-                # if self.year == "2016APV":
-                #     combinedWZgenPtWeight = qcdWWeight * ewkWWeight
-                #     combinedWZgenPtDeborahWeight = (
-                #         qcdWWeight * ewkWDeborahsWeight
-                #     )  # VERIFY again..Deborah said QCD to be taken from python for 2016 but we have all same tunes unlike victor
-                # elif self.year == "2016":
-                #     combinedWZgenPtWeight = qcdWWeight * ewkWWeight
-                #     combinedWZgenPtDeborahWeight = (
-                #         qcdWWeight * ewkWDeborahsWeight
-                #     )  # VERIFY again..Deborah said QCD to be taken from python for 2016 but we have all same tunes unlike victor
-                # elif self.year == "2017":
-                #     combinedWZgenPtWeight = qcdWWeight * ewkWWeight * 0.9135
-                #     combinedWZgenPtDeborahWeight = (
-                #         qcdWWeight * ewkWDeborahsWeight * 0.9135
-                #     )
+
                 if self.year == "2024":
                     combinedWZgenPtWeight = qcdWWeight * ewkWWeight * 0.9135
                     combinedWZgenPtDeborahWeight = (
@@ -1034,8 +1107,6 @@ class wandzgenptweight(Module):
                     )
 
             combinedWZgenPtDylanWeight = 1.21
-            # combinedWZgenPtWeight = qcdWWeight*ewkWWeight*0.9135
-            # combinedWZgenPtDeborahWeight = qcdWWeight*ewkWDeborahsWeight*0.9135
 
         self.out.fillBranch("ewkWWeight", ewkWWeight)
         self.out.fillBranch("ewkZWeight", ewkZWeight)
